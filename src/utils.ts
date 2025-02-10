@@ -10,7 +10,11 @@ export class VRFUtils {
     private suiteID: number;
     private ptLen: number;
     public cLen: number;
-    public hash: (data: Buffer) => Buffer;
+    public hash: (data: Buffer) => Buffer = (data: Buffer) => {
+        const hasher = createHash('sha256');
+        hasher.update(data);
+        return hasher.digest();
+    };
 
     constructor(
         suiteID: number,
@@ -180,12 +184,12 @@ export class VRFUtils {
         return this.hash(data);
     }
 
-    generateNonce(secretKey: Buffer, digest: Buffer): Buffer {
+    generateNonce(secretKey: Buffer, data: Buffer): Buffer {
         const n = this.curve.n;
 
         if (!n) throw new Error('n is not available');
 
-        return generateNonce(n, secretKey, digest);
+        return generateNonce(n, secretKey, this.hash(data));
     }
 
 }

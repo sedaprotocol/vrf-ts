@@ -57,9 +57,7 @@ export function prove(secret: Buffer, message: Buffer): Buffer {
 
     // Step 5: nonce (k generation)
     // @ts-ignore
-    const digest = vrfK256.hash(gammaBytes);
-    // @ts-ignore
-    const kScalar = vrfK256.generateNonce(secret, digest);
+    const kScalar = vrfK256.generateNonce(secret, HBytes);
 
     // Step 6: c = ECVRF_challenge_generation (Y, H, Gamma, U, V)
     // U = k*B
@@ -247,7 +245,7 @@ const point_to_string = (p: any) => {
     return [...prefix.toArray(), ...zero_pad(p.getX().toArray(), 32)];
 };
 
-const zero_pad = (p: any, qlen: any) => 
+const zero_pad = (p: any, qlen: any) =>
     // @ts-ignore
     [...new Array(qlen).fill(0), ...p].slice(-qlen);
 
