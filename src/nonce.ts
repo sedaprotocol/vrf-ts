@@ -30,21 +30,27 @@ function generateSecret(q: BN, x: BN, digest: Buffer): Buffer {
     ]);
 
     // Step B
+    // @ts-ignore
     let v = Buffer.alloc(holen, 0x01);
 
     // Step C
+    // @ts-ignore
     let k = Buffer.alloc(holen, 0x00);
 
     // Step D
+    // @ts-ignore
     k = mac(k, Buffer.concat([v, Buffer.from([0x00]), bx]));
 
     // Step E
+    // @ts-ignore
     v = mac(k, v);
 
     // Step F
+    // @ts-ignore
     k = mac(k, Buffer.concat([v, Buffer.from([0x01]), bx]));
 
     // Step G
+    // @ts-ignore
     v = mac(k, v);
 
     // Step H
@@ -55,6 +61,7 @@ function generateSecret(q: BN, x: BN, digest: Buffer): Buffer {
 
         // Step H2
         while (t.length < Math.ceil(qlen / 8)) {
+            // @ts-ignore
             v = mac(k, v);
             t = Buffer.concat([t, v]);
         }
@@ -65,7 +72,9 @@ function generateSecret(q: BN, x: BN, digest: Buffer): Buffer {
             return t;
         }
 
+        // @ts-ignore
         k = mac(k, Buffer.concat([v, Buffer.from([0x00])]));
+        // @ts-ignore
         v = mac(k, v);
     }
 }

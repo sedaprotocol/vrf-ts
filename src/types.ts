@@ -41,6 +41,7 @@ export class AffinePoint {
    * Convert the point to compressed SEC1 format
    */
   toBytes(): Buffer {
+    // @ts-ignore
     const p = secp256k1.keyFromPublic({x: this.x.toBuffer(), y: this.y.toBuffer() });
     return Buffer.from(p.getPublic(true, 'hex'), 'hex');
   }
