@@ -1,4 +1,4 @@
-import * as elliptic from "elliptic";
+import elliptic from "elliptic";
 import { AffinePoint, ENCODE_TO_CURVE_DST_BACK, ENCODE_TO_CURVE_DST_FRONT } from "./types";
 import { newK256VRF } from "./utils";
 import { BN } from "bn.js";

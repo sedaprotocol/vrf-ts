@@ -1,10 +1,10 @@
 import BN from 'bn.js';
-import { ec as EC, utils } from 'elliptic';
+import elliptic from 'elliptic';
 import { createHash } from "node:crypto";
 import { AffinePoint } from './types';
 import { generateNonce } from './nonce';
 
-const secp256k1 = new EC('secp256k1');
+const secp256k1 = new elliptic.ec('secp256k1');
 export class VRFUtils {
     private curve: typeof secp256k1;
     private suiteID: number;
@@ -170,7 +170,7 @@ export class VRFUtils {
         }
     }
 
-    gammaToHash(point: EC.KeyPair): Buffer {
+    gammaToHash(point: elliptic.ec.KeyPair): Buffer {
         const proofToHashDSTFront = 0x03; // Define these constants based on your needs
         const proofToHashDSTBack = 0x00;
 

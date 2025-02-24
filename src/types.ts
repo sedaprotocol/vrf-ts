@@ -1,6 +1,6 @@
 import BN from 'bn.js';
-import { createHash } from 'crypto';
-import { ec } from 'elliptic';
+import { createHash } from 'node:crypto';
+import elliptic from 'elliptic';
 
 // Domain separation tags
 export const ENCODE_TO_CURVE_DST_FRONT = 0x01;
@@ -9,7 +9,7 @@ export const PROOF_TO_HASH_DST_FRONT = 0x03;
 export const PROOF_TO_HASH_DST_BACK = 0x00;
 
 // Secp256k1 curve instance
-export const secp256k1 = new ec('secp256k1');
+export const secp256k1 = new elliptic.ec('secp256k1');
 
 export class AffinePoint {
   constructor(public x: BN, public y: BN) {}
