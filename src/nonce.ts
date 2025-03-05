@@ -27,11 +27,9 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string): Buffer
 	const bx = Buffer.concat([int2octets(x, rolen), bits2octets(digest, q, qlen, rolen)]);
 
 	// Step B
-	// @ts-ignore
 	let v = Buffer.alloc(holen, 0x01);
 
 	// Step C
-	// @ts-ignore
 	let k = Buffer.alloc(holen, 0x00);
 
 	// Step D
@@ -40,15 +38,15 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string): Buffer
 
 	// Step E
 	// @ts-ignore
-	v = mac(k, v);
+	v = mac(k, v, algorithm);
 
 	// Step F
 	// @ts-ignore
-	k = mac(k, Buffer.concat([v, Buffer.from([0x01]), bx]));
+	k = mac(k, Buffer.concat([v, Buffer.from([0x01]), bx]), algorithm);
 
 	// Step G
 	// @ts-ignore
-	v = mac(k, v);
+	v = mac(k, v, algorithm);
 
 	// Step H
 	const one = new BN(1);
@@ -59,7 +57,7 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string): Buffer
 		// Step H2
 		while (t.length < Math.ceil(qlen / 8)) {
 			// @ts-ignore
-			v = mac(k, v);
+			v = mac(k, v, algorithm);
 			t = Buffer.concat([t, v]);
 		}
 
@@ -70,9 +68,9 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string): Buffer
 		}
 
 		// @ts-ignore
-		k = mac(k, Buffer.concat([v, Buffer.from([0x00])]));
+		k = mac(k, Buffer.concat([v, Buffer.from([0x00])]), algorithm);
 		// @ts-ignore
-		v = mac(k, v);
+		v = mac(k, v, algorithm);
 	}
 }
 
