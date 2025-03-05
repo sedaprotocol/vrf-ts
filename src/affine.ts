@@ -23,9 +23,16 @@ export class AffinePoint {
 	 * Parse a compressed public key into an AffinePoint
 	 */
 	static fromBytes(data: Buffer, curve: elliptic.ec): AffinePoint {
-		// Different curves may have different compressed point sizes
-		// For secp256k1, it's 33 bytes (1 byte prefix + 32 bytes for x coordinate)
-
+		// Get the field size in bytes (for x coordinate)
+		const fieldSize = Math.ceil(curve.curve.p.bitLength() / 8);
+		
+		// Expected size: 1 byte prefix + field size bytes for x coordinate
+		const expectedSize = fieldSize + 1;
+		
+		if (data.length !== expectedSize) {
+			throw new Error(`Invalid point size: expected ${expectedSize} bytes (1 byte prefix + ${fieldSize} bytes for x coordinate), got ${data.length} bytes`);
+		}
+		
 		try {
 			const point = curve.keyFromPublic(data);
 			if (!point) {
@@ -50,5 +57,21 @@ export class AffinePoint {
 			const errorMessage = error instanceof Error ? error.message : String(error);
 			throw new Error(`Failed to convert point to bytes: ${errorMessage}`);
 		}
+	}
+
+	/**
+	 * Multiply this point by a scalar
+	 * @param scalar The scalar to multiply by
+	 * @returns A new AffinePoint representing the result
+	 */
+	multiply(scalar: BN): AffinePoint {
+		// Convert to elliptic.js point format
+		const point = this.curve.curve.point(this.x, this.y);
+		
+		// Perform multiplication
+		const result = point.mul(scalar);
+		
+		// Convert back to AffinePoint
+		return new AffinePoint(result.getX(), result.getY(), this.curve);
 	}
 }

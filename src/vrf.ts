@@ -1,15 +1,9 @@
 import { createHash } from "crypto";
-import { BN } from "bn.js";
 import elliptic from "elliptic";
 import { AffinePoint } from "./affine";
 import { CURVES, type CurveParams } from "./curves";
 import { generateNonce } from "./nonce";
-
-// Domain separation tags
-// export const ENCODE_TO_CURVE_DST_FRONT = 0x01;
-// export const ENCODE_TO_CURVE_DST_BACK = 0x00;
-// export const PROOF_TO_HASH_DST_FRONT = 0x03;
-// export const PROOF_TO_HASH_DST_BACK = 0x00;
+import BN from "bn.js";
 
 /**
  * Verifiable Random Function (VRF) implementation
@@ -20,7 +14,17 @@ export class VRF {
 	private suiteID: number;
 	private cLen: number;
 	private ptLen: number;
-	private hashFn: (data: Buffer) => Buffer;
+	private hashAlgorithm: string;
+    private cofactor: BN;
+    private scalarSize: number;
+
+	// Domain separator constants should be defined at the class level
+	private readonly CHALLENGE_GENERATION_DOMAIN_SEPARATOR_FRONT = 0x02;
+	private readonly CHALLENGE_GENERATION_DOMAIN_SEPARATOR_BACK = 0x00;
+	private readonly ENCODE_TO_CURVE_DST_FRONT = 0x01;
+	private readonly ENCODE_TO_CURVE_DST_BACK = 0x00;
+	private readonly PROOF_TO_HASH_DOMAIN_SEPARATOR_FRONT = 0x03;
+	private readonly PROOF_TO_HASH_DOMAIN_SEPARATOR_BACK = 0x00;
 
 	/**
 	 * Create a new VRF instance
@@ -33,11 +37,11 @@ export class VRF {
 		this.suiteID = params.suiteID;
 		this.cLen = params.cLen;
 		this.ptLen = params.ptLen;
-		this.hashFn = (data: Buffer) => {
-			const hasher = createHash(params.hashAlgorithm);
-			hasher.update(data);
-			return hasher.digest();
-		};
+		this.hashAlgorithm = params.hashAlgorithm;
+        this.cofactor = new BN(this.ec.curve.n.shrn(this.ec.curve.n.bitLength() - 1));
+        
+        // Derive scalar size from curve order
+        this.scalarSize = Math.ceil(this.ec.curve.n.bitLength() / 8);
 	}
 
 	/**
@@ -59,7 +63,7 @@ export class VRF {
 		const gammaPoint = this.scalarAffinePointMult(HPoint, secret);
 		const gammaBytes = gammaPoint.toBytes();
 
-		// Step 5: nonce (k generation)
+		// Step 5: k = ECVRF_nonce_generation (SK, h_string)
 		const kScalar = this.generateNonce(secret, HBytes);
 
 		// Step 6: c = ECVRF_challenge_generation (Y, H, Gamma, U, V)
@@ -98,7 +102,7 @@ export class VRF {
 		const y = this.ec.curve.decodePoint(publicKey, "hex");
 
 		// Step 3: Validate public key point
-		if (y.isInfinity()) {
+		if (y.mul(this.cofactor).isInfinity()) {
 			return "INVALID";
 		}
 
@@ -133,15 +137,11 @@ export class VRF {
 			this.cLen,
 		);
 
-		const paddedCPrime = Buffer.alloc(32);
-		c_prime.copy(paddedCPrime, 32 - c_prime.length); // Pad with zeros on the left
+		// No need to pad c_prime separately - compare directly with cScalar
+		const paddedCPrime = Buffer.alloc(this.scalarSize);
+		c_prime.copy(paddedCPrime, this.scalarSize - c_prime.length);
 
 		return Buffer.compare(paddedCPrime, cScalar) === 0 ? this.gammaToHash(gammaPoint).toString("hex") : "INVALID";
-	}
-
-	// TODO: remove
-	public decodePoint(point: Buffer): AffinePoint {
-		return this.ec.curve.decodePoint(point);
 	}
 
 	/**
@@ -171,6 +171,12 @@ export class VRF {
 
 	// Private methods below
 
+	private hashFn(data: Buffer): Buffer {
+		const hasher = createHash(this.hashAlgorithm);
+		hasher.update(data);
+		return hasher.digest();
+	}
+
 	private decodeProof(pi: Buffer): {
 		gamma: Buffer;
 		cScalar: Buffer;
@@ -178,8 +184,8 @@ export class VRF {
 	} {
 		const gammaOct = this.ptLen + 1;
 
-		if (pi.length !== gammaOct + this.cLen * 3) {
-			throw new Error("Invalid proof length");
+		if (pi.length !== gammaOct + this.cLen + this.scalarSize) {
+			throw new Error(`Invalid proof length: expected ${gammaOct + this.cLen + this.scalarSize}, got ${pi.length}`);
 		}
 
 		// Gamma point
@@ -187,29 +193,27 @@ export class VRF {
 		pi.copy(gamma, 0, 0, gammaOct);
 
 		// C scalar (needs to be padded with leading zeroes)
-		const cScalarPadding = Buffer.alloc(this.ptLen - this.cLen);
+		const cScalarPadding = Buffer.alloc(this.scalarSize - this.cLen);
 		const cScalarData = pi.slice(gammaOct, gammaOct + this.cLen);
 		const cScalar = Buffer.concat([cScalarPadding, cScalarData]);
 
 		// S scalar
-		const sScalar = Buffer.alloc(pi.length - gammaOct - this.cLen);
+		const sScalar = Buffer.alloc(this.scalarSize);
 		pi.copy(sScalar, 0, gammaOct + this.cLen);
 
 		return { gamma, cScalar, sScalar };
 	}
 
 	private challengeGeneration(points: Buffer, truncateLen: number): Buffer {
-		// Step 1: challenge_generation_domain_separator_front = 0x02
-		const challengeGenerationDomainSeparatorFront = 0x02;
 
-		// Step 2: Initialize str = suiteString || challengeGenerationDomainSeparatorFront
-		let pointBytes = Buffer.from([this.suiteID, challengeGenerationDomainSeparatorFront]);
+		// Step 1-2: Initialize str = suiteString || challengeGenerationDomainSeparatorFront
+		let pointBytes = Buffer.from([this.suiteID, this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_FRONT]);
 
 		// Step 3: For PJ in [P1, P2, P3, P4, P5]: str = str || pointToString(PJ)
 		pointBytes = Buffer.concat([pointBytes, points]);
 
-		// Step 4-5: Add challenge_generation_domain_separator_back = 0x00
-		pointBytes = Buffer.concat([pointBytes, Buffer.from([0x00])]);
+        // Step 4-5: str = str || challenge_generation_domain_separator_back
+		pointBytes = Buffer.concat([pointBytes, Buffer.from([this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_BACK])]);
 
 		// Step 6: c_string = Hash(str)
 		const cString = this.hashFn(pointBytes);
@@ -223,17 +227,14 @@ export class VRF {
 	}
 
 	private encodeToCurveTAI(encodeToCurveSalt: Buffer, alpha: Buffer): AffinePoint {
-		const encodeToCurveDSTFront = 0x01;
-		const encodeToCurveDSTBack = 0x00;
-
-		// Prepare the hash input
+		// Use constants instead of hardcoded values
 		const hashInput = Buffer.concat([
 			Buffer.from([this.suiteID]),
-			Buffer.from([encodeToCurveDSTFront]),
+			Buffer.from([this.ENCODE_TO_CURVE_DST_FRONT]),
 			encodeToCurveSalt,
 			alpha,
 			Buffer.from([0x00]), // Initial CTR=0
-			Buffer.from([encodeToCurveDSTBack]),
+			Buffer.from([this.ENCODE_TO_CURVE_DST_BACK]),
 		]);
 
 		const ctrPosition = hashInput.length - 2;
@@ -245,7 +246,8 @@ export class VRF {
 			try {
 				const point = this.tryHashToPoint(hashString);
 				if (point) {
-					return point;
+					// Apply cofactor multiplication
+					return point.multiply(this.cofactor);
 				}
 			} catch (err) {
 				continue;
@@ -277,14 +279,14 @@ export class VRF {
 		const aBN = new BN(a);
 		const bBN = new BN(b);
 		const result = aBN.mul(bBN).umod(this.ec.curve.n);
-		return result.toArrayLike(Buffer, "be", 32);
+		return result.toArrayLike(Buffer, "be", this.scalarSize);
 	}
 
 	private scalarAdd(a: Buffer, b: Buffer): Buffer {
 		const aBN = new BN(a);
 		const bBN = new BN(b);
 		const result = aBN.add(bBN).umod(this.ec.curve.n);
-		return result.toArrayLike(Buffer, "be", 32);
+		return result.toArrayLike(Buffer, "be", this.scalarSize);
 	}
 
 	private tryHashToPoint(data: Buffer): AffinePoint {
@@ -296,25 +298,28 @@ export class VRF {
 		}
 	}
 
-	private gammaToHash(point: any): Buffer {
-		const proofToHashDSTFront = 0x03;
-		const proofToHashDSTBack = 0x00;
+	private gammaToHash(gamma: any): Buffer {
+		const PROOF_TO_HASH_DOMAIN_SEPARATOR_FRONT = 0x03;
+		const PROOF_TO_HASH_DOMAIN_SEPARATOR_BACK = 0x00;
 
+		// Apply cofactor multiplication to ensure point is in the correct subgroup
+		const cofactorGamma = gamma.mul(this.cofactor);
+		
 		// Convert point to compressed format
-		const pointBytes = Buffer.from(point.encode("array", true));
+		const pointBytes = Buffer.from(cofactorGamma.encode("array", true));
 
 		const data = Buffer.concat([
 			Buffer.from([this.suiteID]),
-			Buffer.from([proofToHashDSTFront]),
+			Buffer.from([this.PROOF_TO_HASH_DOMAIN_SEPARATOR_FRONT]),
 			pointBytes,
-			Buffer.from([proofToHashDSTBack]),
+			Buffer.from([this.PROOF_TO_HASH_DOMAIN_SEPARATOR_BACK]),
 		]);
 
 		return this.hashFn(data);
 	}
 
 	private generateNonce(secretKey: Buffer, data: Buffer): Buffer {
-		return generateNonce(this.ec.curve.n, secretKey, this.hashFn(data));
+		return generateNonce(this.ec.curve.n, secretKey, this.hashFn(data), this.hashAlgorithm);
 	}
 }
 
