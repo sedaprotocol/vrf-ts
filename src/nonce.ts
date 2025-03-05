@@ -1,4 +1,4 @@
-import { createHmac } from "crypto";
+import { createHmac } from "node:crypto";
 import BN from "bn.js";
 
 /**
@@ -8,7 +8,7 @@ import BN from "bn.js";
  * @param digest The message digest
  * @returns The generated nonce as bytes
  */
-export function generateNonce(q: BN, secretKey: Buffer, digest: Buffer, algorithm: string = "sha256"): Buffer {
+export function generateNonce(q: BN, secretKey: Buffer, digest: Buffer, algorithm = "sha256"): Buffer {
 	// Convert secret key to BN and generate nonce
 	const x = new BN(secretKey);
 	return generateSecret(q, x, digest, algorithm);
@@ -18,7 +18,7 @@ export function generateNonce(q: BN, secretKey: Buffer, digest: Buffer, algorith
  * Implementation of RFC 6979 nonce generation
  * https://tools.ietf.org/html/rfc6979#section-3.2
  */
-function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string = "sha256"): Buffer {
+function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string): Buffer {
 	const qlen = q.bitLength();
 	const holen = digest.length;
 	const rolen = Math.ceil(qlen / 8);
@@ -40,15 +40,15 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string = "sha25
 
 	// Step E
 	// @ts-ignore
-	v = mac(k, v, algorithm);
+	v = mac(k, v);
 
 	// Step F
 	// @ts-ignore
-	k = mac(k, Buffer.concat([v, Buffer.from([0x01]), bx]), algorithm);
+	k = mac(k, Buffer.concat([v, Buffer.from([0x01]), bx]));
 
 	// Step G
 	// @ts-ignore
-	v = mac(k, v, algorithm);
+	v = mac(k, v);
 
 	// Step H
 	const one = new BN(1);
@@ -59,7 +59,7 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string = "sha25
 		// Step H2
 		while (t.length < Math.ceil(qlen / 8)) {
 			// @ts-ignore
-			v = mac(k, v, algorithm);
+			v = mac(k, v);
 			t = Buffer.concat([t, v]);
 		}
 
@@ -70,16 +70,16 @@ function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string = "sha25
 		}
 
 		// @ts-ignore
-		k = mac(k, Buffer.concat([v, Buffer.from([0x00])]), algorithm);
+		k = mac(k, Buffer.concat([v, Buffer.from([0x00])]));
 		// @ts-ignore
-		v = mac(k, v, algorithm);
+		v = mac(k, v);
 	}
 }
 
 /**
  * HMAC using SHA256
  */
-function mac(key: Buffer, msg: Buffer, algorithm: string = "sha256"): Buffer {
+function mac(key: Buffer, msg: Buffer, algorithm = "sha256"): Buffer {
 	const h = createHmac(algorithm, key);
 	h.update(msg);
 	return h.digest();

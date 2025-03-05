@@ -1,9 +1,9 @@
-import { createHash } from "crypto";
+import { createHash } from "node:crypto";
+import BN from "bn.js";
 import elliptic from "elliptic";
 import { AffinePoint } from "./affine";
 import { CURVES, type CurveParams } from "./curves";
 import { generateNonce } from "./nonce";
-import BN from "bn.js";
 
 /**
  * Verifiable Random Function (VRF) implementation
@@ -15,8 +15,8 @@ export class VRF {
 	private cLen: number;
 	private ptLen: number;
 	private hashAlgorithm: string;
-    private cofactor: BN;
-    private scalarSize: number;
+	private cofactor: BN;
+	private scalarSize: number;
 
 	// Domain separator constants should be defined at the class level
 	private readonly CHALLENGE_GENERATION_DOMAIN_SEPARATOR_FRONT = 0x02;
@@ -25,7 +25,7 @@ export class VRF {
 	private readonly ENCODE_TO_CURVE_DST_BACK = 0x00;
 	private readonly PROOF_TO_HASH_DOMAIN_SEPARATOR_FRONT = 0x03;
 	private readonly PROOF_TO_HASH_DOMAIN_SEPARATOR_BACK = 0x00;
-
+	private readonly COMPRESSED_POINT_EVEN_Y_PREFIX = 0x02;
 	/**
 	 * Create a new VRF instance
 	 * @param curve Curve parameters or name of predefined curve
@@ -38,10 +38,10 @@ export class VRF {
 		this.cLen = params.cLen;
 		this.ptLen = params.ptLen;
 		this.hashAlgorithm = params.hashAlgorithm;
-        this.cofactor = new BN(this.ec.curve.n.shrn(this.ec.curve.n.bitLength() - 1));
-        
-        // Derive scalar size from curve order
-        this.scalarSize = Math.ceil(this.ec.curve.n.bitLength() / 8);
+		this.cofactor = new BN(this.ec.curve.n.shrn(this.ec.curve.n.bitLength() - 1));
+
+		// Derive scalar size from curve order
+		this.scalarSize = Math.ceil(this.ec.curve.n.bitLength() / 8);
 	}
 
 	/**
@@ -51,6 +51,11 @@ export class VRF {
 	 * @returns VRF proof as a Buffer
 	 */
 	public prove(secret: Buffer, message: Buffer): Buffer {
+		// Check secret key length
+		if (secret.length !== this.scalarSize) {
+			throw new Error(`Invalid secret key length: expected ${this.scalarSize}, got ${secret.length}`);
+		}
+
 		// Step 1: derive public key from secret key as `Y = x * B`
 		const publicKeyPoint = this.scalarBasePointMult(secret);
 		const publicKeyBytes = publicKeyPoint.toBytes();
@@ -107,7 +112,7 @@ export class VRF {
 		}
 
 		// Step 4-6: Decode proof
-		let decodedProof;
+		let decodedProof: { gamma: Buffer; cScalar: Buffer; sScalar: Buffer };
 		try {
 			decodedProof = this.decodeProof(proof);
 		} catch {
@@ -205,15 +210,14 @@ export class VRF {
 	}
 
 	private challengeGeneration(points: Buffer, truncateLen: number): Buffer {
-
-		// Step 1-2: Initialize str = suiteString || challengeGenerationDomainSeparatorFront
-		let pointBytes = Buffer.from([this.suiteID, this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_FRONT]);
-
-		// Step 3: For PJ in [P1, P2, P3, P4, P5]: str = str || pointToString(PJ)
-		pointBytes = Buffer.concat([pointBytes, points]);
-
-        // Step 4-5: str = str || challenge_generation_domain_separator_back
-		pointBytes = Buffer.concat([pointBytes, Buffer.from([this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_BACK])]);
+		const pointBytes = Buffer.concat([
+			// Step 1-2: Initialize str = suiteString || challengeGenerationDomainSeparatorFront
+			Buffer.from([this.suiteID, this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_FRONT]),
+			// Step 3: For PJ in [P1, P2, P3, P4, P5]: str = str || pointToString(PJ)
+			points,
+			// Step 4-5: str = str || challenge_generation_domain_separator_back
+			Buffer.from([this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_BACK]),
+		]);
 
 		// Step 6: c_string = Hash(str)
 		const cString = this.hashFn(pointBytes);
@@ -249,8 +253,8 @@ export class VRF {
 					// Apply cofactor multiplication
 					return point.multiply(this.cofactor);
 				}
-			} catch (err) {
-				continue;
+			} catch (_err) {
+				// continue;
 			}
 		}
 
@@ -265,14 +269,7 @@ export class VRF {
 
 	public scalarAffinePointMult(point: AffinePoint, scalar: Buffer): AffinePoint {
 		const k = new BN(scalar);
-		// Convert AffinePoint to elliptic.js point format
-		const ecPoint = this.ec.curve.point(point.x, point.y);
-
-		// Perform multiplication
-		const result = ecPoint.mul(k);
-
-		// Convert back to AffinePoint
-		return new AffinePoint(result.getX(), result.getY(), this.ec);
+		return point.multiply(k);
 	}
 
 	private scalarMult(a: Buffer, b: Buffer): Buffer {
@@ -290,21 +287,19 @@ export class VRF {
 	}
 
 	private tryHashToPoint(data: Buffer): AffinePoint {
-		const concatenatedData = Buffer.concat([Buffer.from([0x02]), data]);
+		const concatenatedData = Buffer.concat([Buffer.from([this.COMPRESSED_POINT_EVEN_Y_PREFIX]), data]);
 		try {
 			return AffinePoint.fromBytes(concatenatedData, this.ec);
 		} catch (err) {
-			throw new Error("Invalid point");
+			const errorMessage = err instanceof Error ? err.message : String(err);
+			throw new Error(`Failed to hash to point: ${errorMessage}`);
 		}
 	}
 
-	private gammaToHash(gamma: any): Buffer {
-		const PROOF_TO_HASH_DOMAIN_SEPARATOR_FRONT = 0x03;
-		const PROOF_TO_HASH_DOMAIN_SEPARATOR_BACK = 0x00;
-
+	private gammaToHash(gamma: elliptic.curve.base.BasePoint): Buffer {
 		// Apply cofactor multiplication to ensure point is in the correct subgroup
 		const cofactorGamma = gamma.mul(this.cofactor);
-		
+
 		// Convert point to compressed format
 		const pointBytes = Buffer.from(cofactorGamma.encode("array", true));
 
