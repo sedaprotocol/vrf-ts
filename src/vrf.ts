@@ -47,47 +47,29 @@ export class VRF {
 	 * @returns VRF proof as a Buffer
 	 */
 	public prove(secret: Buffer, message: Buffer): Buffer {
-		console.log("secret", secret.toString("hex"));
-
 		// Step 1: derive public key from secret key as `Y = x * B`
 		const publicKeyPoint = this.scalarBasePointMult(secret);
 		const publicKeyBytes = publicKeyPoint.toBytes();
-		console.log("publicKeyBytes", publicKeyBytes.toString("hex"));
 
 		// Step 2: Encode to curve (using TAI)
 		const HPoint = this.encodeToCurveTAI(publicKeyBytes, message);
 		const HBytes = HPoint.toBytes();
-		console.log("HBytes", HBytes.toString("hex"));
-		// here: 0272a877532e9ac193aff4401234266f59900a4a9e3fc3cfc6a4b7e467a15d06d4
-		// rfc:  0272a877532e9ac193aff4401234266f59900a4a9e3fc3cfc6a4b7e467a15d06d4
 
 		// Step 4: Gamma = x * H
 		const gammaPoint = this.scalarAffinePointMult(HPoint, secret);
 		const gammaBytes = gammaPoint.toBytes();
-		// console.log("gammaBytes", gammaBytes.toString('hex'));
-		// here: 0272a877532e9ac193aff4401234266f59900a4a9e3fc3cfc6a4b7e467a15d06d4
-		// rfc:  0272a877532e9ac193aff4401234266f59900a4a9e3fc3cfc6a4b7e467a15d06d4
 
 		// Step 5: nonce (k generation)
 		const kScalar = this.generateNonce(secret, HBytes);
-		// console.log("kScalar", kScalar.toString('hex'));
-		// here: 0d90591273453d2dc67312d39914e3a93e194ab47a58cd598886897076986f77
-		// rfc:  0d90591273453d2dc67312d39914e3a93e194ab47a58cd598886897076986f77
 
 		// Step 6: c = ECVRF_challenge_generation (Y, H, Gamma, U, V)
 		// U = k*B
 		const uPoint = this.scalarBasePointMult(kScalar);
 		const uBytes = uPoint.toBytes();
-		// console.log("uBytes", uBytes.toString('hex'));
-		// here: 02bb6a034f67643c6183c10f8b41dc4babf88bff154b674e377d90bde009c21672
-		// rfc:  02bb6a034f67643c6183c10f8b41dc4babf88bff154b674e377d90bde009c21672
 
 		// V = k*H
 		const vPoint = this.scalarAffinePointMult(HPoint, kScalar);
 		const vBytes = vPoint.toBytes();
-		// console.log("vBytes", vBytes.toString('hex'));
-		// here: 024651ef8b4a85a34cc696d5f1d56232a25bc95886cd9bf2b3502965ff90cd616e
-		// rfc:  02893ebee7af9a0faa6da810da8a91f9d50e1dc071240c9706726820ff919e8394
 
 		// Challenge generation
 		const inputs = Buffer.concat([publicKeyBytes, HBytes, gammaBytes, uBytes, vBytes]);
@@ -101,7 +83,6 @@ export class VRF {
 		// Step 8: encode (gamma, c, s)
 		const result = Buffer.concat([gammaBytes, cScalar, sScalar]);
 
-		// console.log("result (pi)", result.toString('hex'));
 		return result;
 	}
 
