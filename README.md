@@ -43,8 +43,12 @@ console.log('VRF Proof:', Buffer.from(proof).toString('hex'));
 
 // Verify a proof
 const publicKey = Buffer.from(keyPair.publicKey, 'hex');
-const hash = vrf.verify(publicKey, proof, message);
-console.log('VRF Hash:', hash);
+const result = vrf.verify(publicKey, proof, message);
+if (result.isValid) {
+    console.log('VRF Hash:', result.hash);
+} else {
+    console.error('Verification failed:', result.reason);
+}
 
 // Convert proof to hash directly
 const hashFromProof = vrf.proofToHash(proof);
@@ -70,7 +74,7 @@ new Secp256k1Vrf()
   - Returns: `Bytes` (proof)
   
 - `verify(publicKey: Hex, proof: Bytes, message: Bytes)`: Verify a VRF proof
-  - Returns: `string` (hex encoded hash or "INVALID")
+  - Returns: `{ isValid: true, hash: string } | { isValid: false, reason: string }`
   
 - `proofToHash(proof: Bytes)`: Convert a proof to its output hash
   - Returns: `string` (hex encoded hash)

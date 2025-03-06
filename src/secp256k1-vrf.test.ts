@@ -19,8 +19,11 @@ describe("VRF", () => {
 			expect(Buffer.from(proof).toString("hex")).toBe(expectedProof);
 
 			// Test proof verification
-			const hash = vrf.verify(publicKey, proof, message);
-			expect(hash).toBe(expectedHash);
+			const result = vrf.verify(publicKey, proof, message);
+			expect(result.isValid).toBe(true);
+			if (result.isValid) {
+				expect(result.hash).toBe(expectedHash);
+			}
 
 			// Test proof to hash conversion
 			const proofHash = vrf.proofToHash(proof);

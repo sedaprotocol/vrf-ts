@@ -1,8 +1,17 @@
 import { sha256 } from "@noble/hashes/sha256";
 import * as secp256k1 from "@noble/secp256k1";
-import { type Bytes, type Hex, type PrivKey, ProjectivePoint } from "@noble/secp256k1";
-import {} from "@noble/secp256k1";
+import type { Bytes, Hex, PrivKey } from "@noble/secp256k1";
 import { generateNonce } from "./nonce.js";
+
+interface VerifyValidResult {
+	isValid: true;
+	hash: string;
+}
+
+interface VerifyInvalidResult {
+	isValid: false;
+	reason: string;
+}
 
 /**
  * Verifiable Random Function (VRF) implementation using @noble/secp256k1
@@ -53,7 +62,7 @@ export class Secp256k1Vrf {
 		const hBytes = this.encodeToCurveTAI(publicKey, message);
 
 		// Step 4: Gamma = x * H
-		const hPoint = ProjectivePoint.fromHex(hBytes);
+		const hPoint = secp256k1.ProjectivePoint.fromHex(hBytes);
 		const gammaPoint = hPoint.multiply(secretBigInt);
 
 		// Step 5: Generate nonce (using RFC 6979)
@@ -62,7 +71,7 @@ export class Secp256k1Vrf {
 		// Step 6: Challenge generation
 		// U = k*B
 		const kScalarBigInt = secp256k1.utils.normPrivateKeyToScalar(kScalar);
-		const uPoint = ProjectivePoint.BASE.multiply(kScalarBigInt);
+		const uPoint = secp256k1.ProjectivePoint.BASE.multiply(kScalarBigInt);
 
 		// V = k*H
 		const vPoint = hPoint.multiply(kScalarBigInt);
@@ -100,11 +109,11 @@ export class Secp256k1Vrf {
 	 * @param message Original message as bytes
 	 * @returns Hash as a hex string if valid, "INVALID" if invalid
 	 */
-	public verify(publicKey: Hex, proof: Bytes, message: Bytes): string {
+	public verify(publicKey: Hex, proof: Bytes, message: Bytes): VerifyValidResult | VerifyInvalidResult {
 		try {
 			// Step 1-2: Decode public key
 			// Verify the public key is valid
-			const publicKeyBytes = ProjectivePoint.fromHex(publicKey).toRawBytes(true);
+			const publicKeyBytes = secp256k1.ProjectivePoint.fromHex(publicKey).toRawBytes(true);
 
 			// Step 4-6: Decode proof
 			const { gamma, cScalar, sScalar } = this.decodeProof(proof);
@@ -113,9 +122,9 @@ export class Secp256k1Vrf {
 			const H = this.encodeToCurveTAI(publicKeyBytes, message);
 
 			// Convert to noble/secp256k1 points
-			const Y = ProjectivePoint.fromHex(publicKey);
-			const Gamma = ProjectivePoint.fromHex(gamma);
-			const HPoint = ProjectivePoint.fromHex(H);
+			const Y = secp256k1.ProjectivePoint.fromHex(publicKey);
+			const Gamma = secp256k1.ProjectivePoint.fromHex(gamma);
+			const HPoint = secp256k1.ProjectivePoint.fromHex(H);
 
 			// Convert challenge and scalar to BigInt
 			const cScalarBigInt = secp256k1.utils.normPrivateKeyToScalar(cScalar);
@@ -123,7 +132,7 @@ export class Secp256k1Vrf {
 
 			// Step 8-9: Compute U and V
 			// U = sG - cY
-			const sG = ProjectivePoint.BASE.multiply(sScalarBigInt);
+			const sG = secp256k1.ProjectivePoint.BASE.multiply(sScalarBigInt);
 			const cY = Y.multiply(cScalarBigInt);
 			const U = sG.add(cY.negate());
 
@@ -143,17 +152,13 @@ export class Secp256k1Vrf {
 			const cScalarBytes = Buffer.from(cScalar).slice(this.scalarSize - this.cLen);
 
 			return Buffer.compare(cPrimeBytes, cScalarBytes) === 0
-				? Buffer.from(this.gammaToHash(gamma)).toString("hex")
-				: "INVALID";
+				? { isValid: true, hash: Buffer.from(this.gammaToHash(gamma)).toString("hex") }
+				: { isValid: false, reason: "Invalid challenge" };
 		} catch (error) {
-			console.error(`VRF verification failed: ${error instanceof Error ? error.message : String(error)}`);
-			console.debug("Verification details:", {
-				publicKeyLength: publicKey.length,
-				proofLength: proof.length,
-				messageLength: message.length,
-				error,
-			});
-			return "INVALID";
+			return {
+				isValid: false,
+				reason: `VRF verification failed: ${error instanceof Error ? error.message : String(error)}`,
+			};
 		}
 	}
 
@@ -269,7 +274,7 @@ export class Secp256k1Vrf {
 				candidatePoint.set(hashBytes.slice(0, 32), 1);
 
 				// Try to create a valid point
-				const point = ProjectivePoint.fromHex(candidatePoint);
+				const point = secp256k1.ProjectivePoint.fromHex(candidatePoint);
 
 				// No need to apply cofactor multiplication (Secp256k1 has cofactor 1)
 
