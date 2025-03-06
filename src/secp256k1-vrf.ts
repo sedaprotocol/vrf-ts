@@ -1,6 +1,7 @@
 import { sha256 } from "@noble/hashes/sha256";
 import * as secp256k1 from "@noble/secp256k1";
-import { ProjectivePoint } from "@noble/secp256k1";
+import { type Bytes, type Hex, type PrivKey, ProjectivePoint } from "@noble/secp256k1";
+import {} from "@noble/secp256k1";
 import { generateNonce } from "./nonce";
 
 /**
@@ -36,7 +37,7 @@ export class Secp256k1Vrf {
 	 * @param message Message to prove as bytes
 	 * @returns VRF proof as bytes
 	 */
-	public prove(secret: secp256k1.PrivKey, message: secp256k1.Bytes): secp256k1.Bytes {
+	public prove(secret: PrivKey, message: Bytes): Bytes {
 		// Validate the secret key
 		let secretBigInt: bigint;
 		try {
@@ -99,7 +100,7 @@ export class Secp256k1Vrf {
 	 * @param message Original message as bytes
 	 * @returns Hash as a hex string if valid, "INVALID" if invalid
 	 */
-	public verify(publicKey: secp256k1.Hex, proof: secp256k1.Bytes, message: secp256k1.Bytes): string {
+	public verify(publicKey: Hex, proof: Bytes, message: Bytes): string {
 		try {
 			// Step 1-2: Decode public key
 			// Verify the public key is valid
@@ -162,7 +163,7 @@ export class Secp256k1Vrf {
 	 * @param proof VRF proof as bytes
 	 * @returns Hash output as a hex string
 	 */
-	public proofToHash(proof: secp256k1.Bytes): string {
+	public proofToHash(proof: Bytes): string {
 		const { gamma } = this.decodeProof(proof);
 		return Buffer.from(this.gammaToHash(gamma)).toString("hex");
 	}
@@ -184,23 +185,14 @@ export class Secp256k1Vrf {
 	// Private helper methods
 
 	/**
-	 * Hash function used throughout the VRF
-	 * @param data Data to hash
-	 * @returns Hash output as bytes
-	 */
-	private hashFn(data: secp256k1.Bytes): secp256k1.Bytes {
-		return sha256(data);
-	}
-
-	/**
 	 * Decode a VRF proof into its components
 	 * @param pi Proof to decode as bytes
 	 * @returns Decoded gamma, c, and s components as bytes
 	 */
-	private decodeProof(pi: secp256k1.Bytes): {
-		gamma: secp256k1.Bytes;
-		cScalar: secp256k1.Bytes;
-		sScalar: secp256k1.Bytes;
+	private decodeProof(pi: Bytes): {
+		gamma: Bytes;
+		cScalar: Bytes;
+		sScalar: Bytes;
 	} {
 		// Convert pi to Buffer if it's not already
 		const piBuffer = Buffer.isBuffer(pi) ? pi : Buffer.from(pi);
@@ -234,14 +226,14 @@ export class Secp256k1Vrf {
 	 * @param truncateLen Length to truncate the output hash to
 	 * @returns Challenge value as bytes
 	 */
-	private challengeGeneration(points: secp256k1.Bytes, truncateLen: number): secp256k1.Bytes {
+	private challengeGeneration(points: Bytes, truncateLen: number): Bytes {
 		const pointBytes = Buffer.concat([
 			Buffer.from([this.suiteID, this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_FRONT]),
 			points,
 			Buffer.from([this.CHALLENGE_GENERATION_DOMAIN_SEPARATOR_BACK]),
 		]);
 
-		const cString = this.hashFn(pointBytes);
+		const cString = sha256(pointBytes);
 
 		if (truncateLen > cString.length) {
 			throw new Error("Truncate length exceeds hash length");
@@ -256,7 +248,7 @@ export class Secp256k1Vrf {
 	 * @param alpha Message to encode as bytes
 	 * @returns Point on the curve as bytes
 	 */
-	private encodeToCurveTAI(encodeToCurveSalt: secp256k1.Bytes, alpha: secp256k1.Bytes): secp256k1.Bytes {
+	private encodeToCurveTAI(encodeToCurveSalt: Bytes, alpha: Bytes): Bytes {
 		// Prepare components for the hash input
 		const prefix = Buffer.from([this.suiteID, this.ENCODE_TO_CURVE_DST_FRONT]);
 		const suffix = Buffer.from([0x00, this.ENCODE_TO_CURVE_DST_BACK]); // Initial CTR=0
@@ -297,7 +289,7 @@ export class Secp256k1Vrf {
 	 * @param data Input data
 	 * @returns Nonce as bytes
 	 */
-	private generateNonce(secretKey: secp256k1.PrivKey, data: secp256k1.Bytes): secp256k1.Bytes {
+	private generateNonce(secretKey: PrivKey, data: Bytes): Bytes {
 		return generateNonce(secretKey, sha256(data));
 	}
 
@@ -306,7 +298,7 @@ export class Secp256k1Vrf {
 	 * @param gamma Gamma point as bytes
 	 * @returns Hash output as bytes
 	 */
-	private gammaToHash(gamma: secp256k1.Bytes): secp256k1.Bytes {
+	private gammaToHash(gamma: Bytes): Bytes {
 		const data = Buffer.concat([
 			Buffer.from([this.suiteID]),
 			Buffer.from([this.PROOF_TO_HASH_DOMAIN_SEPARATOR_FRONT]),
@@ -314,6 +306,6 @@ export class Secp256k1Vrf {
 			Buffer.from([this.PROOF_TO_HASH_DOMAIN_SEPARATOR_BACK]),
 		]);
 
-		return this.hashFn(data);
+		return sha256(data);
 	}
 }
