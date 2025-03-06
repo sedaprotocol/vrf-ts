@@ -1,10 +1,1 @@
-import { CURVES, VRF } from "./vrf";
-
-export type { CurveParams } from "./curves";
-
-export {
-	// Main VRF class
-	VRF,
-	// Predefined curves
-	CURVES,
-};
+export { Secp256k1Vrf } from "./secp256k1-vrf";

@@ -1,97 +1,95 @@
-import { createHmac } from "node:crypto";
-import BN from "bn.js";
+import { hmac } from "@noble/hashes/hmac";
+import { sha256 } from "@noble/hashes/sha256";
+import type { Bytes, PrivKey } from "@noble/secp256k1";
+
+// Secp256k1 curve order (n)
+const SECP256K1_ORDER = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
 
 /**
  * Generates a deterministic nonce (ephemeral scalar k) using RFC 6979.
- * @param q The order of the curve
  * @param secretKey The private key as bytes
  * @param digest The message digest
  * @returns The generated nonce as bytes
  */
-export function generateNonce(q: BN, secretKey: Buffer, digest: Buffer, algorithm = "sha256"): Buffer {
-	// Convert secret key to BN and generate nonce
-	const x = new BN(secretKey);
-	return generateSecret(q, x, digest, algorithm);
+export function generateNonce(secretKey: PrivKey, digest: Bytes): Bytes {
+	// Convert secret key to bigint
+	let x: bigint;
+
+	if (typeof secretKey === "string") {
+		// Handle hex string
+		x = BigInt(`0x${secretKey.replace(/^0x/i, "")}`);
+	} else if (typeof secretKey === "bigint") {
+		// Handle bigint
+		x = secretKey;
+	} else {
+		// Handle Uint8Array or Buffer
+		x = bytesToBigInt(secretKey);
+	}
+
+	return generateSecret(SECP256K1_ORDER, x, digest);
 }
 
 /**
  * Implementation of RFC 6979 nonce generation
  * https://tools.ietf.org/html/rfc6979#section-3.2
  */
-function generateSecret(q: BN, x: BN, digest: Buffer, algorithm: string): Buffer {
-	const qlen = q.bitLength();
+function generateSecret(order: bigint, x: bigint, digest: Bytes): Bytes {
+	const qlen = bitLength(order);
 	const holen = digest.length;
 	const rolen = Math.ceil(qlen / 8);
 
 	// Initial data
-	const bx = Buffer.concat([int2octets(x, rolen), bits2octets(digest, q, qlen, rolen)]);
+	const bx = Buffer.concat([int2octets(x, rolen), bits2octets(digest, order, qlen, rolen)]);
 
 	// Step B
-	let v = Buffer.alloc(holen, 0x01);
+	let v: Bytes = Buffer.alloc(holen, 0x01);
 
 	// Step C
-	let k = Buffer.alloc(holen, 0x00);
+	let k: Bytes = Buffer.alloc(holen, 0x00);
 
 	// Step D
-	// @ts-ignore
-	k = mac(k, Buffer.concat([v, Buffer.from([0x00]), bx]), algorithm);
+	k = hmac(sha256, k, Buffer.concat([v, Buffer.from([0x00]), bx]));
 
 	// Step E
-	// @ts-ignore
-	v = mac(k, v, algorithm);
+	v = hmac(sha256, k, v);
 
 	// Step F
-	// @ts-ignore
-	k = mac(k, Buffer.concat([v, Buffer.from([0x01]), bx]), algorithm);
+	k = hmac(sha256, k, Buffer.concat([v, Buffer.from([0x01]), bx]));
 
 	// Step G
-	// @ts-ignore
-	v = mac(k, v, algorithm);
+	v = hmac(sha256, k, v);
 
 	// Step H
-	const one = new BN(1);
 	while (true) {
 		// Step H1
 		let t = Buffer.alloc(0);
 
 		// Step H2
 		while (t.length < Math.ceil(qlen / 8)) {
-			// @ts-ignore
-			v = mac(k, v, algorithm);
+			v = Buffer.from(hmac(sha256, k, v));
 			t = Buffer.concat([t, v]);
 		}
 
 		// Step H3
 		const secret = bits2int(t, qlen);
-		if (secret.gte(one) && secret.lt(q)) {
-			return t;
+		if (secret > 0n && secret < order) {
+			return int2octets(secret, rolen);
 		}
 
-		// @ts-ignore
-		k = mac(k, Buffer.concat([v, Buffer.from([0x00])]), algorithm);
-		// @ts-ignore
-		v = mac(k, v, algorithm);
+		k = hmac(sha256, k, Buffer.concat([v, Buffer.from([0x00])]));
+		v = hmac(sha256, k, v);
 	}
-}
-
-/**
- * HMAC using SHA256
- */
-function mac(key: Buffer, msg: Buffer, algorithm = "sha256"): Buffer {
-	const h = createHmac(algorithm, key);
-	h.update(msg);
-	return h.digest();
 }
 
 /**
  * Convert bits to integer
  * https://tools.ietf.org/html/rfc6979#section-2.3.2
  */
-function bits2int(bytes: Buffer, qlen: number): BN {
+function bits2int(bytes: Bytes, qlen: number): bigint {
 	const vlen = bytes.length * 8;
-	let v = new BN(bytes);
+	let v = bytesToBigInt(bytes);
 	if (vlen > qlen) {
-		v = v.shrn(vlen - qlen);
+		v = v >> BigInt(vlen - qlen);
 	}
 	return v;
 }
@@ -100,36 +98,43 @@ function bits2int(bytes: Buffer, qlen: number): BN {
  * Convert integer to octets
  * https://tools.ietf.org/html/rfc6979#section-2.3.3
  */
-function int2octets(v: BN, rolen: number): Buffer {
-	const out = Buffer.from(v.toArray());
+function int2octets(v: bigint, rolen: number): Bytes {
+	const result = Buffer.alloc(rolen, 0);
 
-	// Pad with zeros if too short
-	if (out.length < rolen) {
-		const out2 = Buffer.alloc(rolen, 0);
-		out.copy(out2, rolen - out.length);
-		return out2;
+	let tempV = v;
+	for (let i = rolen - 1; i >= 0; i--) {
+		result[i] = Number(tempV & 0xffn);
+		tempV = tempV >> 8n;
 	}
 
-	// Drop most significant bytes if too long
-	if (out.length > rolen) {
-		const out2 = Buffer.alloc(rolen);
-		out.copy(out2, 0, out.length - rolen);
-		return out2;
-	}
-
-	return out;
+	return result;
 }
 
 /**
  * Convert bits to octets
  * https://tools.ietf.org/html/rfc6979#section-2.3.4
  */
-function bits2octets(inp: Buffer, q: BN, qlen: number, rolen: number): Buffer {
+function bits2octets(inp: Uint8Array, q: bigint, qlen: number, rolen: number): Bytes {
 	const z1 = bits2int(inp, qlen);
-	const z2 = z1.sub(q);
+	const z2 = z1 - q;
 
-	if (z2.isNeg()) {
+	if (z2 < 0n) {
 		return int2octets(z1, rolen);
 	}
 	return int2octets(z2, rolen);
+}
+
+/**
+ * Calculate bit length of a bigint
+ */
+function bitLength(n: bigint): number {
+	return n.toString(2).length;
+}
+
+/**
+ * Convert bytes to bigint
+ */
+function bytesToBigInt(bytes: Bytes): bigint {
+	const hex = Buffer.from(bytes).toString("hex");
+	return BigInt(`0x${hex}`);
 }
