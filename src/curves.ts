@@ -38,10 +38,16 @@ enum SuiteID {
 	ECVRF_EDWARDS25519_SHA512_TAI = 0x03,
 }
 
+export type VrfTypes = "secp256k1-sha256-tai" | "p256-sha256-tai" | "secp256k1" | "p256";
+
+type PartialRecord<K extends keyof any, T> = {
+	[P in K]?: T;
+};
+
 /**
  * Predefined curves for VRF
  */
-export const CURVES: Record<string, CurveParams> = {
+const PREDEFINED_CURVES: PartialRecord<VrfTypes, CurveParams> = {
 	/**
 	 * secp256k1 curve with SHA-256 and TAI encoding (extension beyond RFC 9381)
 	 */
@@ -71,15 +77,11 @@ export const CURVES: Record<string, CurveParams> = {
 };
 
 // For backward compatibility, add aliases with old names
-const aliases = {
-	secp256k1: CURVES["secp256k1-sha256-tai"],
-	p256: CURVES["p256-sha256-tai"],
+export const CURVES: PartialRecord<VrfTypes, CurveParams> = {
+	secp256k1: PREDEFINED_CURVES["secp256k1-sha256-tai"],
+	p256: PREDEFINED_CURVES["p256-sha256-tai"],
+	...PREDEFINED_CURVES,
 };
-
-// Add aliases to CURVES object
-for (const [key, value] of Object.entries(aliases)) {
-	CURVES[key] = value;
-}
 
 // Export SuiteID for external use
 export { SuiteID };

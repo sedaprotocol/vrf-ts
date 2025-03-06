@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import BN from "bn.js";
 import elliptic from "elliptic";
 import { AffinePoint } from "./affine";
-import { CURVES, type CurveParams, SuiteID } from "./curves";
+import { CURVES, type CurveParams, SuiteID, type VrfTypes } from "./curves";
 import { generateNonce } from "./nonce";
 
 /**
@@ -32,8 +32,9 @@ export class VRF {
 	 * Create a new VRF instance
 	 * @param curve Curve parameters or name of predefined curve
 	 */
-	constructor(curve: CurveParams | string) {
+	constructor(curve: CurveParams | VrfTypes) {
 		const params = typeof curve === "string" ? CURVES[curve] : curve;
+		if (!params) throw new Error(`Curve ${curve} does not exist`);
 
 		this.ec = new elliptic.ec(params.name);
 		this.suiteID = params.suiteID;
