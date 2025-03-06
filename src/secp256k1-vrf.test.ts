@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Secp256k1Vrf } from "./secp256k1-vrf";
+import { Secp256k1Vrf } from "./secp256k1-vrf.js";
 
 describe("VRF", () => {
 	test("Secp256k1Vrf matches test vectors", async () => {

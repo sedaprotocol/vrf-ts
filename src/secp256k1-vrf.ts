@@ -2,7 +2,7 @@ import { sha256 } from "@noble/hashes/sha256";
 import * as secp256k1 from "@noble/secp256k1";
 import { type Bytes, type Hex, type PrivKey, ProjectivePoint } from "@noble/secp256k1";
 import {} from "@noble/secp256k1";
-import { generateNonce } from "./nonce";
+import { generateNonce } from "./nonce.js";
 
 /**
  * Verifiable Random Function (VRF) implementation using @noble/secp256k1
