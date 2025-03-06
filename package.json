@@ -1,6 +1,6 @@
 {
 	"name": "@seda-protocol/secp256k1-vrf",
-	"version": "0.0.1",
+	"version": "0.1.0",
 	"description": "A TypeScript implementation of Verifiable Random Functions (VRF) for secp256k1",
 	"type": "module",
 	"main": "dist/index.js",
