@@ -8,6 +8,7 @@
 	"types": "dist/index.d.ts",
 	"keywords": ["vrf", "crypto", "verifiable", "random", "function", "secp256k1", "typescript"],
 	"author": "SEDA Protocol",
+	"license": "MIT",
 	"dependencies": {
 		"@noble/hashes": "^1.7.1",
 		"@noble/secp256k1": "^2.2.3"
